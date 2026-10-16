@@ -1,0 +1,23 @@
+name: atualizador_windows
+description: Atualizacao automatica dos apps Flutter da Agrosepac no Windows, a partir da pasta de rede onde o CI publica cada build.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  crypto: ^3.0.0
+  path: ^1.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  assets:
+    - scripts/
