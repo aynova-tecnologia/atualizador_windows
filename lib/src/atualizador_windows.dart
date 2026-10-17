@@ -180,6 +180,7 @@ class AtualizadorWindows {
           '-Exe',
           instalacao.exe,
         ],
+        workingDirectory: instalacao.raiz.path,
         mode: ProcessStartMode.detached,
       );
     } on ProcessException catch (e) {

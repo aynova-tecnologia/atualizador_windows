@@ -9,6 +9,9 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
+[Environment]::CurrentDirectory = $Instalacao
+Set-Location -LiteralPath $Instalacao
+
 $app = Join-Path $Instalacao 'app'
 $anterior = Join-Path $Instalacao 'anterior'
 $proxima = Join-Path $Instalacao 'proxima'
