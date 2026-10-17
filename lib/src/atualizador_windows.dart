@@ -155,8 +155,13 @@ class AtualizadorWindows {
     registrar('disparando o atualizador para o build ${manifesto.build}');
     try {
       await Process.start(
-        'powershell.exe',
+        'cmd.exe',
         [
+          '/c',
+          'start',
+          '',
+          '/min',
+          'powershell.exe',
           '-NoProfile',
           '-ExecutionPolicy',
           'Bypass',
