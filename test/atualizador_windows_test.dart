@@ -14,7 +14,8 @@ void main() {
   setUp(() {
     temp = Directory.systemTemp.createTempSync('atualizador_');
     publicacao = Directory(p.join(temp.path, 'rede'))..createSync();
-    final raiz = Directory(p.join(temp.path, 'Timber Pine Teste'))..createSync();
+    final raiz = Directory(p.join(temp.path, 'Timber Pine Teste'))
+      ..createSync();
     Directory(p.join(raiz.path, 'app')).createSync();
     File(p.join(raiz.path, Instalacao.marcador)).createSync();
     instalacao = Instalacao(raiz: raiz, exe: 'agro_pine_cliente.exe');
@@ -23,26 +24,26 @@ void main() {
   tearDown(() => temp.deleteSync(recursive: true));
 
   Map<String, dynamic> manifestoJson({int build = 5, String? sha}) => {
-    'nome': 'Timber Pine Teste',
-    'versao': '1.0.0',
-    'build': build,
-    'exe': 'agro_pine_cliente.exe',
-    'zip': 'timber_pine-1.0.0+$build.zip',
-    'sha256': sha ?? 'ABC',
-    'obrigatoria': true,
-  };
+        'nome': 'Timber Pine Teste',
+        'versao': '1.0.0',
+        'build': build,
+        'exe': 'agro_pine_cliente.exe',
+        'zip': 'timber_pine-1.0.0+$build.zip',
+        'sha256': sha ?? 'ABC',
+        'obrigatoria': true,
+      };
 
   void publicar(Map<String, dynamic> json) => File(
-    p.join(publicacao.path, 'versao.json'),
-  ).writeAsStringSync(jsonEncode(json));
+        p.join(publicacao.path, 'versao.json'),
+      ).writeAsStringSync(jsonEncode(json));
 
   AtualizadorWindows atualizador({int buildAtual = 4}) => AtualizadorWindows(
-    configuracao: ConfiguracaoAtualizacao(
-      buildAtual: buildAtual,
-      pastaPublicacao: publicacao.path,
-      instalacao: instalacao,
-    ),
-  );
+        configuracao: ConfiguracaoAtualizacao(
+          buildAtual: buildAtual,
+          pastaPublicacao: publicacao.path,
+          instalacao: instalacao,
+        ),
+      );
 
   group('Manifesto', () {
     test('le o versao.json e normaliza o hash para minusculas', () {
@@ -106,7 +107,8 @@ void main() {
   group('baixar', () {
     test('copia o zip, informa o progresso e confere o hash', () async {
       final bytes = List<int>.generate(200000, (i) => i % 251);
-      File(p.join(publicacao.path, 'timber_pine-1.0.0+5.zip')).writeAsBytesSync(bytes);
+      File(p.join(publicacao.path, 'timber_pine-1.0.0+5.zip'))
+          .writeAsBytesSync(bytes);
       final manifesto = Manifesto.fromJson(
         manifestoJson(sha: sha256.convert(bytes).toString()),
       );
@@ -120,7 +122,8 @@ void main() {
     });
 
     test('hash diferente falha e apaga o arquivo baixado', () async {
-      File(p.join(publicacao.path, 'timber_pine-1.0.0+5.zip')).writeAsBytesSync([1, 2, 3]);
+      File(p.join(publicacao.path, 'timber_pine-1.0.0+5.zip'))
+          .writeAsBytesSync([1, 2, 3]);
       final manifesto = Manifesto.fromJson(manifestoJson(sha: 'errado'));
 
       await expectLater(
@@ -149,8 +152,10 @@ void main() {
       );
       final alvo = atualizador();
 
-      expect(alvo.jaFalhouCom(Manifesto.fromJson(manifestoJson(build: 5))), isTrue);
-      expect(alvo.jaFalhouCom(Manifesto.fromJson(manifestoJson(build: 6))), isFalse);
+      expect(alvo.jaFalhouCom(Manifesto.fromJson(manifestoJson(build: 5))),
+          isTrue);
+      expect(alvo.jaFalhouCom(Manifesto.fromJson(manifestoJson(build: 6))),
+          isFalse);
       expect(alvo.ultimaFalha(), 'o app nao fechou');
 
       alvo.esquecerFalha();
@@ -158,10 +163,56 @@ void main() {
     });
   });
 
+  group('pendente.json', () {
+    test('marca o script que nao rodou so para o mesmo build e sem falha.json',
+        () {
+      instalacao.registroPendente.writeAsStringSync(jsonEncode({'build': 5}));
+      final alvo = atualizador();
+      final build5 = Manifesto.fromJson(manifestoJson(build: 5));
+
+      expect(alvo.scriptNaoRodouPara(build5), isTrue);
+      expect(
+          alvo.scriptNaoRodouPara(Manifesto.fromJson(manifestoJson(build: 6))),
+          isFalse);
+
+      instalacao.registroDeFalha
+          .writeAsStringSync(jsonEncode({'build': 5, 'erro': 'x'}));
+      expect(alvo.scriptNaoRodouPara(build5), isFalse);
+
+      alvo.esquecerFalha();
+      expect(instalacao.registroPendente.existsSync(), isFalse);
+      expect(instalacao.registroDeFalha.existsSync(), isFalse);
+    });
+
+    test('sem o script dentro do app, nao marca pendente nem fecha', () async {
+      var fechou = false;
+      final alvo = AtualizadorWindows(
+        configuracao: ConfiguracaoAtualizacao(
+          buildAtual: 4,
+          pastaPublicacao: publicacao.path,
+          instalacao: instalacao,
+        ),
+        aoReiniciar: () => fechou = true,
+      );
+
+      await expectLater(
+        alvo.trocarEReiniciar(
+          Manifesto.fromJson(manifestoJson()),
+          File(p.join(temp.path, 'x.zip')),
+        ),
+        throwsA(isA<FalhaAoAtualizar>()),
+      );
+      expect(instalacao.registroPendente.existsSync(), isFalse);
+      expect(fechou, isFalse);
+    });
+  });
+
   group('pasta de dados', () {
     test('producao usa o nome do app; o resto ganha o sufixo Teste', () {
-      expect(nomeDaPastaDeDados('Timber Pine', ambiente: 'prod'), 'Timber Pine');
-      expect(nomeDaPastaDeDados('Timber Pine', ambiente: 'dev'), 'Timber Pine Teste');
+      expect(
+          nomeDaPastaDeDados('Timber Pine', ambiente: 'prod'), 'Timber Pine');
+      expect(nomeDaPastaDeDados('Timber Pine', ambiente: 'dev'),
+          'Timber Pine Teste');
     });
 
     test('fica em APPDATA\\Agrosepac e e criada se nao existir', () async {

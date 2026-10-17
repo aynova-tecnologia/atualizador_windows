@@ -14,6 +14,7 @@ $anterior = Join-Path $Instalacao 'anterior'
 $proxima = Join-Path $Instalacao 'proxima'
 $registroDeFalha = Join-Path $Instalacao 'falha.json'
 $log = Join-Path $Instalacao 'atualizador.log'
+$registroPendente = Join-Path $Instalacao 'pendente.json'
 
 function Registrar([string]$mensagem) {
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $mensagem" | Add-Content -LiteralPath $log
@@ -28,6 +29,8 @@ function ComRetentativa([scriptblock]$acao) {
         }
     }
 }
+
+Remove-Item -LiteralPath $registroPendente -Force -ErrorAction SilentlyContinue
 
 try {
     Registrar "inicio: build $Build, processo $ProcessoId"

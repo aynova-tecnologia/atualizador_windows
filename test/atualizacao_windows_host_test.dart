@@ -7,18 +7,19 @@ import 'package:flutter_test/flutter_test.dart';
 class _AtualizadorFalso extends AtualizadorWindows {
   Manifesto? publicado;
   bool falhouAntes = false;
+  bool scriptNaoRodou = false;
   int falhasAoBaixar = 0;
   int downloads = 0;
   Manifesto? reiniciouCom;
 
   _AtualizadorFalso()
-    : super(
-        configuracao: const ConfiguracaoAtualizacao(
-          buildAtual: 4,
-          pastaPublicacao: 'rede',
-          instalacao: null,
-        ),
-      );
+      : super(
+          configuracao: const ConfiguracaoAtualizacao(
+            buildAtual: 4,
+            pastaPublicacao: 'rede',
+            instalacao: null,
+          ),
+        );
 
   @override
   bool get ativo => true;
@@ -28,6 +29,9 @@ class _AtualizadorFalso extends AtualizadorWindows {
 
   @override
   bool jaFalhouCom(Manifesto manifesto) => falhouAntes;
+
+  @override
+  bool scriptNaoRodouPara(Manifesto manifesto) => scriptNaoRodou;
 
   @override
   String? ultimaFalha() => 'o app nao fechou em 60 segundos';
@@ -56,14 +60,14 @@ class _AtualizadorFalso extends AtualizadorWindows {
 }
 
 Manifesto _manifesto({required bool obrigatoria}) => Manifesto(
-  nome: 'Timber Pine Teste',
-  versao: '1.0.0',
-  build: 5,
-  exe: 'agro_pine_cliente.exe',
-  zip: 'timber_pine-1.0.0+5.zip',
-  sha256: 'abc',
-  obrigatoria: obrigatoria,
-);
+      nome: 'Timber Pine Teste',
+      versao: '1.0.0',
+      build: 5,
+      exe: 'agro_pine_cliente.exe',
+      zip: 'timber_pine-1.0.0+5.zip',
+      sha256: 'abc',
+      obrigatoria: obrigatoria,
+    );
 
 void main() {
   late _AtualizadorFalso atualizador;
@@ -94,7 +98,14 @@ void main() {
     await desmontar(tester);
   });
 
-  testWidgets('versao obrigatoria esconde o app, baixa e reinicia sozinha', (
+  Future<void> tocar(WidgetTester tester, String texto) async {
+    await tester.tap(find.text(texto));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  testWidgets('versao obrigatoria esconde o app e espera o clique em Atualizar',
+      (
     tester,
   ) async {
     atualizador.publicado = _manifesto(obrigatoria: true);
@@ -103,7 +114,26 @@ void main() {
 
     expect(find.text('conteudo'), findsNothing);
     expect(find.text('Atualização obrigatória'), findsOneWidget);
-    expect(find.text('Reiniciando…'), findsOneWidget);
+    expect(find.text('Depois'), findsNothing);
+    expect(atualizador.downloads, 0);
+    await desmontar(tester);
+  });
+
+  testWidgets(
+      'Atualizar baixa e so reinicia depois do clique em Reiniciar agora', (
+    tester,
+  ) async {
+    atualizador.publicado = _manifesto(obrigatoria: true);
+    await montar(tester);
+
+    await tocar(tester, 'Atualizar');
+
+    expect(atualizador.downloads, 1);
+    expect(find.text('Atualização pronta'), findsOneWidget);
+    expect(atualizador.reiniciouCom, isNull);
+
+    await tocar(tester, 'Reiniciar agora');
+
     expect(atualizador.reiniciouCom?.build, 5);
     await desmontar(tester);
   });
@@ -114,23 +144,21 @@ void main() {
     atualizador
       ..publicado = _manifesto(obrigatoria: true)
       ..falhasAoBaixar = 1;
-
     await montar(tester);
+
+    await tocar(tester, 'Atualizar');
 
     expect(find.text('conteudo'), findsNothing);
     expect(find.text('Não foi possível atualizar'), findsOneWidget);
-    expect(atualizador.reiniciouCom, isNull);
 
-    await tester.tap(find.text('Tentar de novo'));
-    await tester.pump();
-    await tester.pump();
+    await tocar(tester, 'Tentar de novo');
 
     expect(atualizador.downloads, 2);
-    expect(atualizador.reiniciouCom?.build, 5);
+    expect(find.text('Atualização pronta'), findsOneWidget);
     await desmontar(tester);
   });
 
-  testWidgets('build que ja falhou no script nao recomeca sozinho', (
+  testWidgets('build que ja falhou no script mostra o erro do script', (
     tester,
   ) async {
     atualizador
@@ -141,6 +169,23 @@ void main() {
 
     expect(find.text('Não foi possível atualizar'), findsOneWidget);
     expect(find.text('o app nao fechou em 60 segundos'), findsOneWidget);
+    expect(atualizador.downloads, 0);
+    await desmontar(tester);
+  });
+
+  testWidgets(
+      'app que fechou para atualizar e voltou antigo avisa que o script nao rodou',
+      (
+    tester,
+  ) async {
+    atualizador
+      ..publicado = _manifesto(obrigatoria: true)
+      ..scriptNaoRodou = true;
+
+    await montar(tester);
+
+    expect(find.text(kMensagemScriptNaoRodou), findsOneWidget);
+    expect(find.text('Tentar de novo'), findsOneWidget);
     expect(atualizador.downloads, 0);
     await desmontar(tester);
   });
@@ -156,21 +201,23 @@ void main() {
     expect(find.text('Versão 1.0.0+5 disponível.'), findsOneWidget);
     expect(atualizador.downloads, 0);
 
-    await tester.tap(find.text('Depois'));
-    await tester.pump();
+    await tocar(tester, 'Depois');
 
     expect(find.text('Versão 1.0.0+5 disponível.'), findsNothing);
     expect(find.text('conteudo'), findsOneWidget);
     await desmontar(tester);
   });
 
-  testWidgets('versao opcional atualiza quando a pessoa pede', (tester) async {
+  testWidgets('versao opcional atualiza e reinicia quando a pessoa pede', (
+    tester,
+  ) async {
     atualizador.publicado = _manifesto(obrigatoria: false);
-
     await montar(tester);
-    await tester.tap(find.text('Atualizar agora'));
-    await tester.pump();
-    await tester.pump();
+
+    await tocar(tester, 'Atualizar agora');
+    expect(find.text('Atualização pronta'), findsOneWidget);
+
+    await tocar(tester, 'Reiniciar agora');
 
     expect(atualizador.reiniciouCom?.build, 5);
     await desmontar(tester);

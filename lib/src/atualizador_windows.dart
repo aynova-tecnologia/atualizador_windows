@@ -75,9 +75,36 @@ class AtualizadorWindows {
     }
   }
 
+  bool scriptNaoRodouPara(Manifesto manifesto) {
+    final instalacao = configuracao.instalacao!;
+    if (!instalacao.registroPendente.existsSync()) return false;
+    if (instalacao.registroDeFalha.existsSync()) return false;
+    try {
+      final json =
+          jsonDecode(instalacao.registroPendente.readAsStringSync()) as Map;
+      return json['build'] == manifesto.build;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void esquecerFalha() {
-    final registro = configuracao.instalacao!.registroDeFalha;
-    if (registro.existsSync()) registro.deleteSync();
+    final instalacao = configuracao.instalacao!;
+    for (final registro in [
+      instalacao.registroDeFalha,
+      instalacao.registroPendente,
+    ]) {
+      if (registro.existsSync()) registro.deleteSync();
+    }
+  }
+
+  void registrar(String mensagem) {
+    try {
+      configuracao.instalacao!.log.writeAsStringSync(
+        '${DateTime.now().toIso8601String()} app: $mensagem\r\n',
+        mode: FileMode.append,
+      );
+    } catch (_) {}
   }
 
   Future<File> baixar(
@@ -99,7 +126,8 @@ class AtualizadorWindows {
       }
       await saida.close();
     } on FileSystemException catch (e) {
-      throw FalhaAoAtualizar('Não foi possível copiar a versão nova: ${e.message}');
+      throw FalhaAoAtualizar(
+          'Não foi possível copiar a versão nova: ${e.message}');
     }
     final hash = (await sha256.bind(destino.openRead()).first).toString();
     if (hash != manifesto.sha256) {
@@ -118,29 +146,44 @@ class AtualizadorWindows {
       throw const FalhaAoAtualizar('O script de atualização não veio no app.');
     }
     await embutido.copy(instalacao.script.path);
-    await Process.start(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-WindowStyle',
-        'Hidden',
-        '-File',
-        instalacao.script.path,
-        '-ProcessoId',
-        '$pid',
-        '-Build',
-        '${manifesto.build}',
-        '-Zip',
-        zip.path,
-        '-Instalacao',
-        instalacao.raiz.path,
-        '-Exe',
-        instalacao.exe,
-      ],
-      mode: ProcessStartMode.detached,
+    instalacao.registroPendente.writeAsStringSync(
+      jsonEncode({
+        'build': manifesto.build,
+        'em': DateTime.now().toIso8601String(),
+      }),
     );
+    registrar('disparando o atualizador para o build ${manifesto.build}');
+    try {
+      await Process.start(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-WindowStyle',
+          'Hidden',
+          '-File',
+          instalacao.script.path,
+          '-ProcessoId',
+          '$pid',
+          '-Build',
+          '${manifesto.build}',
+          '-Zip',
+          zip.path,
+          '-Instalacao',
+          instalacao.raiz.path,
+          '-Exe',
+          instalacao.exe,
+        ],
+        mode: ProcessStartMode.detached,
+      );
+    } on ProcessException catch (e) {
+      instalacao.registroPendente.deleteSync();
+      registrar('o Windows recusou iniciar o atualizador: ${e.message}');
+      throw FalhaAoAtualizar(
+        'O Windows não deixou iniciar o atualizador: ${e.message}',
+      );
+    }
     aoReiniciar();
   }
 }

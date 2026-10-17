@@ -16,12 +16,12 @@ class ConfiguracaoAtualizacao {
   });
 
   factory ConfiguracaoAtualizacao.doBuild() => ConfiguracaoAtualizacao(
-    buildAtual: const int.fromEnvironment('APP_BUILD'),
-    pastaPublicacao: const String.fromEnvironment('PASTA_ATUALIZACAO'),
-    instalacao: !kIsWeb && Platform.isWindows
-        ? Instalacao.doExecutavel(Platform.resolvedExecutable)
-        : null,
-  );
+        buildAtual: const int.fromEnvironment('APP_BUILD'),
+        pastaPublicacao: const String.fromEnvironment('PASTA_ATUALIZACAO'),
+        instalacao: !kIsWeb && Platform.isWindows
+            ? Instalacao.doExecutavel(Platform.resolvedExecutable)
+            : null,
+      );
 
   bool get ativa =>
       buildAtual > 0 && pastaPublicacao.isNotEmpty && instalacao != null;

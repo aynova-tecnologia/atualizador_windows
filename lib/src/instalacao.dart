@@ -24,17 +24,21 @@ class Instalacao {
 
   File get registroDeFalha => File(p.join(raiz.path, 'falha.json'));
 
+  File get registroPendente => File(p.join(raiz.path, 'pendente.json'));
+
+  File get log => File(p.join(raiz.path, 'atualizador.log'));
+
   File get script => File(p.join(download.path, 'atualizador.ps1'));
 
   File scriptEmbutido() => File(
-    p.join(
-      app.path,
-      'data',
-      'flutter_assets',
-      'packages',
-      'atualizador_windows',
-      'scripts',
-      'atualizador.ps1',
-    ),
-  );
+        p.join(
+          app.path,
+          'data',
+          'flutter_assets',
+          'packages',
+          'atualizador_windows',
+          'scripts',
+          'atualizador.ps1',
+        ),
+      );
 }

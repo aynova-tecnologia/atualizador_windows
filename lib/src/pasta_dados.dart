@@ -14,7 +14,8 @@ Future<Directory> pastaDeDadosDoApp(
 }) async {
   final raiz = appData ?? Platform.environment['APPDATA'];
   if (raiz == null || raiz.isEmpty) {
-    throw StateError('APPDATA nao definido: pasta de dados so existe no Windows.');
+    throw StateError(
+        'APPDATA nao definido: pasta de dados so existe no Windows.');
   }
   final pasta = Directory(
     p.join(raiz, 'Agrosepac', nomeDaPastaDeDados(nomeApp, ambiente: ambiente)),

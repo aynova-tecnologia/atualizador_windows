@@ -1,11 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import 'atualizador_windows.dart';
 import 'manifesto.dart';
 
-enum _Fase { liberado, oferecendo, baixando, reiniciando, falhou }
+enum _Fase { liberado, oferecendo, baixando, pronto, reiniciando, falhou }
+
+const kMensagemScriptNaoRodou =
+    'O app fechou para atualizar, mas o atualizador não chegou a rodar. '
+    'Ele pode ter sido bloqueado pelo antivírus ou por uma política do Windows. '
+    'Avise a TI.';
 
 class AtualizacaoWindowsHost extends StatefulWidget {
   final Widget? child;
@@ -31,16 +37,19 @@ class _AtualizacaoWindowsHostState extends State<AtualizacaoWindowsHost> {
   bool _consultando = false;
   _Fase _fase = _Fase.liberado;
   Manifesto? _versaoNova;
+  File? _zipBaixado;
   int? _adiadaAteBuild;
   double _progresso = 0;
   String? _erro;
 
   bool get _obrigatoria => _versaoNova?.obrigatoria ?? true;
 
-  bool get _bloqueia =>
+  bool get _ocupado =>
       _fase == _Fase.baixando ||
-      _fase == _Fase.reiniciando ||
-      (_fase == _Fase.falhou && _obrigatoria);
+      _fase == _Fase.pronto ||
+      _fase == _Fase.reiniciando;
+
+  bool get _bloqueia => _ocupado || (_obrigatoria && _fase != _Fase.liberado);
 
   @override
   void initState() {
@@ -59,33 +68,36 @@ class _AtualizacaoWindowsHostState extends State<AtualizacaoWindowsHost> {
   }
 
   Future<void> _consultar() async {
-    if (_consultando || _fase == _Fase.baixando || _fase == _Fase.reiniciando) {
-      return;
-    }
+    if (_consultando || _ocupado) return;
     _consultando = true;
     final manifesto = await _atualizador.versaoNova();
     _consultando = false;
     if (!mounted || manifesto == null) return;
     _versaoNova = manifesto;
     if (_atualizador.jaFalhouCom(manifesto)) {
-      setState(() {
-        _fase = _Fase.falhou;
-        _erro =
-            _atualizador.ultimaFalha() ??
-            'A última tentativa de instalar esta versão falhou.';
-      });
+      _falhar(
+        _atualizador.ultimaFalha() ??
+            'A última tentativa de instalar esta versão falhou.',
+      );
       return;
     }
-    if (manifesto.obrigatoria) {
-      unawaited(_instalar());
+    if (_atualizador.scriptNaoRodouPara(manifesto)) {
+      _falhar(kMensagemScriptNaoRodou);
       return;
     }
     final adiada = _adiadaAteBuild;
-    if (adiada != null && manifesto.build <= adiada) return;
+    if (!manifesto.obrigatoria && adiada != null && manifesto.build <= adiada) {
+      return;
+    }
     setState(() => _fase = _Fase.oferecendo);
   }
 
-  Future<void> _instalar() async {
+  void _falhar(String erro) => setState(() {
+        _fase = _Fase.falhou;
+        _erro = erro;
+      });
+
+  Future<void> _baixar() async {
     final manifesto = _versaoNova!;
     setState(() {
       _fase = _Fase.baixando;
@@ -101,27 +113,33 @@ class _AtualizacaoWindowsHostState extends State<AtualizacaoWindowsHost> {
         },
       );
       if (!mounted) return;
-      setState(() => _fase = _Fase.reiniciando);
-      await _atualizador.trocarEReiniciar(manifesto, zip);
-    } catch (e) {
-      if (!mounted) return;
       setState(() {
-        _fase = _Fase.falhou;
-        _erro = '$e';
+        _zipBaixado = zip;
+        _fase = _Fase.pronto;
       });
+    } catch (e) {
+      if (mounted) _falhar('$e');
+    }
+  }
+
+  Future<void> _reiniciar() async {
+    setState(() => _fase = _Fase.reiniciando);
+    try {
+      await _atualizador.trocarEReiniciar(_versaoNova!, _zipBaixado!);
+    } catch (e) {
+      if (mounted) _falhar('$e');
     }
   }
 
   void _adiar() => setState(() {
-    _adiadaAteBuild = _versaoNova?.build;
-    _fase = _Fase.liberado;
-  });
+        _adiadaAteBuild = _versaoNova?.build;
+        _fase = _Fase.liberado;
+      });
 
   @override
   Widget build(BuildContext context) {
     final mostraAviso =
-        !_obrigatoria &&
-        (_fase == _Fase.oferecendo || _fase == _Fase.falhou);
+        !_bloqueia && (_fase == _Fase.oferecendo || _fase == _Fase.falhou);
     return Stack(
       children: [
         Positioned.fill(
@@ -134,10 +152,13 @@ class _AtualizacaoWindowsHostState extends State<AtualizacaoWindowsHost> {
           Positioned.fill(
             child: _TelaDeAtualizacao(
               versao: _versaoNova!.rotulo,
+              obrigatoria: _obrigatoria,
               fase: _fase,
               progresso: _progresso,
               erro: _erro,
-              aoTentarDeNovo: _instalar,
+              aoAtualizar: _baixar,
+              aoReiniciar: _reiniciar,
+              aoAdiar: _obrigatoria ? null : _adiar,
             ),
           ),
         if (mostraAviso)
@@ -148,7 +169,7 @@ class _AtualizacaoWindowsHostState extends State<AtualizacaoWindowsHost> {
             child: _AvisoDeVersaoNova(
               versao: _versaoNova!.rotulo,
               erro: _fase == _Fase.falhou ? _erro : null,
-              aoAtualizar: _instalar,
+              aoAtualizar: _baixar,
               aoAdiar: _adiar,
             ),
           ),
@@ -159,18 +180,40 @@ class _AtualizacaoWindowsHostState extends State<AtualizacaoWindowsHost> {
 
 class _TelaDeAtualizacao extends StatelessWidget {
   final String versao;
+  final bool obrigatoria;
   final _Fase fase;
   final double progresso;
   final String? erro;
-  final VoidCallback aoTentarDeNovo;
+  final VoidCallback aoAtualizar;
+  final VoidCallback aoReiniciar;
+  final VoidCallback? aoAdiar;
 
   const _TelaDeAtualizacao({
     required this.versao,
+    required this.obrigatoria,
     required this.fase,
     required this.progresso,
     required this.erro,
-    required this.aoTentarDeNovo,
+    required this.aoAtualizar,
+    required this.aoReiniciar,
+    required this.aoAdiar,
   });
+
+  String get _titulo => switch (fase) {
+        _Fase.falhou => 'Não foi possível atualizar',
+        _Fase.pronto => 'Atualização pronta',
+        _ => obrigatoria ? 'Atualização obrigatória' : 'Nova versão disponível',
+      };
+
+  String get _texto => switch (fase) {
+        _Fase.falhou => erro ?? 'Erro desconhecido.',
+        _Fase.pronto =>
+          'Clique em Reiniciar agora. O app vai fechar e abrir de novo já na versão $versao.',
+        _Fase.reiniciando => 'Fechando o app para instalar a versão $versao…',
+        _ => obrigatoria
+            ? 'A versão $versao está disponível. Atualize para continuar usando o app.'
+            : 'A versão $versao está disponível.',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +223,7 @@ class _TelaDeAtualizacao extends StatelessWidget {
       color: tema.colorScheme.surface,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: 440),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -195,39 +238,18 @@ class _TelaDeAtualizacao extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  falhou
-                      ? 'Não foi possível atualizar'
-                      : 'Atualização obrigatória',
+                  _titulo,
                   style: tema.textTheme.titleLarge,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  falhou
-                      ? erro ?? 'Erro desconhecido.'
-                      : 'A versão $versao está disponível. O app vai reiniciar sozinho.',
+                  _texto,
                   style: tema.textTheme.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                if (falhou)
-                  FilledButton.icon(
-                    onPressed: aoTentarDeNovo,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Tentar de novo'),
-                  )
-                else ...[
-                  LinearProgressIndicator(
-                    value: fase == _Fase.baixando ? progresso : null,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    fase == _Fase.baixando
-                        ? 'Baixando… ${(progresso * 100).round()}%'
-                        : 'Reiniciando…',
-                    style: tema.textTheme.bodySmall,
-                  ),
-                ],
+                ..._acoes(tema),
               ],
             ),
           ),
@@ -235,6 +257,67 @@ class _TelaDeAtualizacao extends StatelessWidget {
       ),
     );
   }
+
+  List<Widget> _acoes(ThemeData tema) => switch (fase) {
+        _Fase.baixando => [
+            LinearProgressIndicator(value: progresso),
+            const SizedBox(height: 8),
+            Text(
+              'Baixando… ${(progresso * 100).round()}%',
+              style: tema.textTheme.bodySmall,
+            ),
+          ],
+        _Fase.reiniciando => [const LinearProgressIndicator()],
+        _Fase.pronto => [
+            _Botoes(
+              principal: FilledButton.icon(
+                onPressed: aoReiniciar,
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('Reiniciar agora'),
+              ),
+              aoAdiar: aoAdiar,
+            ),
+          ],
+        _Fase.falhou => [
+            _Botoes(
+              principal: FilledButton.icon(
+                onPressed: aoAtualizar,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tentar de novo'),
+              ),
+              aoAdiar: aoAdiar,
+            ),
+          ],
+        _ => [
+            _Botoes(
+              principal: FilledButton.icon(
+                onPressed: aoAtualizar,
+                icon: const Icon(Icons.download),
+                label: const Text('Atualizar'),
+              ),
+              aoAdiar: aoAdiar,
+            ),
+          ],
+      };
+}
+
+class _Botoes extends StatelessWidget {
+  final Widget principal;
+  final VoidCallback? aoAdiar;
+
+  const _Botoes({required this.principal, required this.aoAdiar});
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          if (aoAdiar != null)
+            TextButton(onPressed: aoAdiar, child: const Text('Depois')),
+          principal,
+        ],
+      );
 }
 
 class _AvisoDeVersaoNova extends StatelessWidget {
