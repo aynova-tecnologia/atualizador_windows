@@ -54,8 +54,8 @@ class AtualizadorWindows {
   }
 
   bool jaFalhouCom(Manifesto manifesto) {
-    final registro = configuracao.instalacao!.registroDeFalha;
-    if (!registro.existsSync()) return false;
+    final registro = configuracao.instalacao?.registroDeFalha;
+    if (registro == null || !registro.existsSync()) return false;
     try {
       final json = jsonDecode(registro.readAsStringSync()) as Map;
       return json['build'] == manifesto.build;
@@ -65,8 +65,8 @@ class AtualizadorWindows {
   }
 
   String? ultimaFalha() {
-    final registro = configuracao.instalacao!.registroDeFalha;
-    if (!registro.existsSync()) return null;
+    final registro = configuracao.instalacao?.registroDeFalha;
+    if (registro == null || !registro.existsSync()) return null;
     try {
       final json = jsonDecode(registro.readAsStringSync()) as Map;
       return json['erro'] as String?;
@@ -76,7 +76,8 @@ class AtualizadorWindows {
   }
 
   bool scriptNaoRodouPara(Manifesto manifesto) {
-    final instalacao = configuracao.instalacao!;
+    final instalacao = configuracao.instalacao;
+    if (instalacao == null) return false;
     if (!instalacao.registroPendente.existsSync()) return false;
     if (instalacao.registroDeFalha.existsSync()) return false;
     try {
@@ -89,7 +90,8 @@ class AtualizadorWindows {
   }
 
   void esquecerFalha() {
-    final instalacao = configuracao.instalacao!;
+    final instalacao = configuracao.instalacao;
+    if (instalacao == null) return;
     for (final registro in [
       instalacao.registroDeFalha,
       instalacao.registroPendente,
@@ -100,7 +102,7 @@ class AtualizadorWindows {
 
   void registrar(String mensagem) {
     try {
-      configuracao.instalacao!.log.writeAsStringSync(
+      configuracao.instalacao?.log.writeAsStringSync(
         '${DateTime.now().toIso8601String()} app: $mensagem\r\n',
         mode: FileMode.append,
       );
