@@ -30,8 +30,14 @@ foreach ($pasta in @([Environment]::GetFolderPath('Desktop'), [Environment]::Get
     $atalho = $shell.CreateShortcut((Join-Path $pasta "$($manifesto.nome).lnk"))
     $atalho.TargetPath = $exe
     $atalho.WorkingDirectory = $app
+    $atalho.IconLocation = "$exe,0"
     $atalho.Save()
 }
+
+# O Windows guarda o icone do atalho num cache indexado pelo caminho do exe, que
+# e sempre o mesmo aqui; sem limpar, a barra de tarefas segue com o icone antigo
+# depois de trocar o icone do app.
+try { Start-Process -FilePath 'ie4uinit.exe' -ArgumentList '-show' -NoNewWindow -Wait -ErrorAction SilentlyContinue } catch {}
 
 Write-Host "Pronto. Abra o $($manifesto.nome) pelo atalho na area de trabalho."
 Start-Process -FilePath $exe -WorkingDirectory $app

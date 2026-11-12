@@ -1,6 +1,6 @@
 name: atualizador_windows
 description: Atualizacao automatica dos apps Flutter da Agrosepac no Windows, a partir da pasta de rede onde o CI publica cada build.
-version: 0.2.2
+version: 0.2.3
 publish_to: none
 
 environment:

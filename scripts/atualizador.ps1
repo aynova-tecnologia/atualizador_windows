@@ -60,6 +60,9 @@ try {
     if (Test-Path -LiteralPath $registroDeFalha) { Remove-Item -LiteralPath $registroDeFalha -Force }
     Remove-Item -LiteralPath $Zip -Force -ErrorAction SilentlyContinue
     Registrar "troca concluida: build $Build"
+    # Mesmo caminho de exe, icone novo: sem limpar o cache de icones do Windows a
+    # barra de tarefas e o atalho seguem mostrando o antigo.
+    try { Start-Process -FilePath 'ie4uinit.exe' -ArgumentList '-show' -NoNewWindow -Wait -ErrorAction SilentlyContinue } catch {}
 }
 catch {
     $erro = "$_"
